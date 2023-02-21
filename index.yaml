@@ -1,0 +1,65 @@
+openapi: '3.0.0'
+info:
+  version: '1.0.0'
+  title: 'Admin API'
+  description: Administration API for managing org units and sensors
+servers:
+  - url: http://localhost:8080
+
+paths:
+  /sensor/{sensor_id}:
+    parameters:
+      - name: sensor_id
+        description: The unique identifier of the sensor
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Sensor_id'
+    get:
+      summary: Read a entity
+      responses:
+        200:
+          description: Sensor information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sensor'
+        404:
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    Sensor_id:
+      description: The unique identifier of a sensor
+      type: string
+    Sensor:
+      type: object
+      required:
+        - id
+        - value
+        - type
+      properties:
+        id:
+          $ref: '#/components/schemas/Sensor_id'
+        value:
+          type: string
+        version:
+          type: string
+
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          description: A human readable error message
+          type: string
