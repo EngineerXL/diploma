@@ -1,0 +1,1 @@
+python3  -m uvicorn python_service:app --host 0.0.0.0 --reload --port 8080

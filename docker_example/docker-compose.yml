@@ -1,0 +1,22 @@
+version: '3.3'
+
+services:
+  db:
+    image: postgres
+    restart: always
+    volumes:
+      - db-volume:/var/lib/postgresql
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: pguser
+      POSTGRES_PASSWORD: pguser
+      POSTGRES_DB: pgdb
+    networks:
+      - arch-network
+volumes:
+  db-volume:
+networks:
+  arch-network:
+    driver: "bridge"
+    external: false
