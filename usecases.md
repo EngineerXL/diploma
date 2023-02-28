@@ -1,22 +1,26 @@
 ## Процессы по работе с данными
 
 ```plantuml
-
 @startuml
 left to right direction
 skinparam packageStyle rect
 
 actor admin
 
-rectangle system {
-  admin -- (create new sensor)
-  admin -- (create org unit)
-  admin -- (assign sensor to unit)
-  admin -- (organize units into hierarchy)
-  admin -- (redefine sensor property)
+rectangle "Admin API" {
+  admin -- (Create org tree edge)
+  admin -- (Create org tree node)
+  admin -- (Create new sensor type)
+  admin -- (Redefine\nsensor properties)
+  admin -- (Create new sensor)
+  admin -- (Change sensor type)
+  admin -- (Create new org unit)
 
-  admin -- (publish schema to test environment)
-  admin -- (publish schema to production environment)
+' ?
+  admin -- (publish schema\nto test environment)
+' ?
+  admin -- (publish schema\nto production environment)
+
 '  (checkout) .> (payment) : include
 '  (help) .> (checkout) : extends
 '  (checkout) -> (authorize)

@@ -1,12 +1,82 @@
-openapi: '3.0.0'
+openapi: "3.0.0"
 info:
-  version: '1.0.0'
-  title: 'Admin API'
+  version: "1.0.0"
+  title: "Admin API"
   description: Administration API for managing org units and sensors
 servers:
   - url: http://localhost:8080
 
 paths:
+  /edges:
+    post:
+      summary: "Create org tree edge"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrgTreeEdge"
+      responses:
+        200:
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgTreeEdge"
+        404:
+          description: "Org tree node not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /nodes:
+    post:
+      summary: "Create org tree node"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrgTreeNode"
+      responses:
+        200:
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgTreeNode"
+        500:
+          description: "Can't add org tree node"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /nodes/{OrgTreeNode_id}:
+    get:
+      summary: "Read org tree node"
+      parameters:
+        - name: OrgTreeNode_id
+          description: The unique identifier of the sensor
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/OrgTreeNode_id"
+      responses:
+        200:
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgTreeNode"
+        404:
+          description: "Org tree node not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /sensor/{sensor_id}:
     parameters:
       - name: sensor_id
@@ -14,7 +84,7 @@ paths:
         in: path
         required: true
         schema:
-          $ref: '#/components/schemas/Sensor_id'
+          $ref: "#/components/schemas/Sensor_id"
     get:
       summary: Read a entity
       responses:
@@ -23,20 +93,37 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Sensor'
+                $ref: "#/components/schemas/Sensor"
         404:
           description: Not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
         500:
           description: Unexpected error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-  /sensor: 
+                $ref: "#/components/schemas/Error"
+    put:
+      summary: Redefine sensor properties
+      requestBody:
+        description: Sensor information
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Sensor"
+      responses:
+        200:
+          description: Succefully updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sensor"
+
+  /sensor:
     post:
       summary: Create new sensor
       requestBody:
@@ -45,48 +132,134 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Sensor'
+              $ref: "#/components/schemas/Sensor"
       responses:
         200:
           description: Sensor added succefully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Sensor'
+                $ref: "#/components/schemas/Sensor"
         404:
           description: Can't add sensor
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
         500:
           description: Unexpected error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
 components:
   schemas:
-    Sensor_id:
-      description: The unique identifier of a sensor
-      type: string
-    Sensor:
-      type: object
+    OrgTreeNode_id:
+      description: The unique identifier of an organization tree node
+      type: "integer"
+      format: "int64_t"
+
+    OrgTreeEdge:
+      type: "object"
       required:
-        - id
-        - type
+        - "node_id_u"
+        - "node_id_v"
+        - "parent"
+      properties:
+        node_id_u:
+          $ref: "#/components/schemas/OrgTreeNode_id"
+        node_id_v:
+          $ref: "#/components/schemas/OrgTreeNode_id"
+        parent:
+          description: "true - u is parent of v, false - v is parent of u"
+          type: "boolean"
+          format: "bool"
+
+    OrgTreeNode:
+      type: "object"
+      required:
+        - "id"
+        - "type"
+        - "object-id"
       properties:
         id:
-          $ref: '#/components/schemas/Sensor_id'
+          $ref: "#/components/schemas/OrgTreeNode_id"
         type:
+          description: '"Sensor" or "OrgUnit"'
           type: string
+        object-id:
+          description: "OrgUnit_id or Sensor_id"
+          type: "integer"
+          format: "int64_t"
+
+    OrgUnit_id:
+      description: The unique identifier of an organization tree node
+      type: "integer"
+      format: "int64_t"
+
+    OrgUnit:
+      type: "object"
+      required:
+        - "id"
+        - "name"
+        - "type"
+        - "json"
+      properties:
+        id:
+          $ref: "#/components/schemas/OrgUnit_id"
+        name:
+          type: "string"
+        type:
+          type: "string"
+        json:
+          type: "string"
+
+    Sensor_id:
+      description: The unique identifier of a sensor
+      type: "integer"
+      format: "int64_t"
+
+    SensorType_id:
+      description: The unique identifier ot a sensor type
+      type: "integer"
+      format: "int64_t"
+
+    SensorType:
+      type: "object"
+      required:
+        - "id"
+        - "frequency"
+        - "dimension"
+        - "info"
+      properties:
+        id:
+          $ref: "#/components/schemas/SensorType_id"
+        frequency:
+          type: "integer"
+          format: "int64_t"
+        dimension:
+          type: "integer"
+          format: "int64_t"
+        info:
+          type: "string"
+
+    Sensor:
+      type: "object"
+      required:
+        - "id"
+        - "type"
+      properties:
+        id:
+          $ref: "#/components/schemas/Sensor_id"
+        type:
+          $ref: "#/components/schemas/SensorType_id"
 
     Error:
-      type: object
+      type: "object"
       required:
-        - message
+        - "message"
       properties:
         message:
-          description: A human readable error message
-          type: string
+          description: "A human readable error message"
+          type: "string"

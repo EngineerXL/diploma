@@ -3,43 +3,44 @@
 ## Модель данных в PostgreSQL
 ```plantuml
 @startuml
-class OrgGraph {
-  -String id
-  -String name
-  -String type 
+class OrgTreeEdge {
+  -int64_t node_id_u
+  -int64_t node_id_v
+  -bool parent
 }
 
-class OrgRelation{
-  -String id
-  -String name
+class OrgTreeNode {
+  -int64_t id
+  -string type
+  -int64_t object_id
 }
 
-class OrgUnitDescription{
-  -String id
-  -String name   
-  -String type
-  -String json
+class OrgUnit {
+  -int64_t id
+  -string name   
+  -string type
+  -string json
 }
 
 class Sensor{
- -String id
- -String type 
+ -int64_t id
+ -int64_t type_id
 }
 
 class SensorType{
-    -String id
-    -Int frequency
-    -Int dimension
+  -int64_t id
+  -int64_t frequency
+  -int64_t dimension
+  -string info
 }
 
-OrgGraph -- OrgRelation : родительская организация
-OrgGraph -- OrgRelation : дочерняя организация
+OrgTreeNode -- OrgTreeEdge: "Связывает вершины\nдерева орг. структуры"
 
-OrgGraph -- OrgUnitDescription : Описание организационной еденицы
+OrgTreeNode --- OrgUnit: "Вершина дерева\nописывает единицу\nорг. структуры"
 
-Sensor -- OrgGraph : Установлен в цеху
+OrgTreeNode -- Sensor: "Вершина дерева\nописывает сенсор"
 
-Sensor -- SensorType: Является датчиком типа
+Sensor -- SensorType: "Датчик типа"
 @enduml
 ```
 
