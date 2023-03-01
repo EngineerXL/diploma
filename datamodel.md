@@ -1,6 +1,7 @@
 # Модель данных
 
 ## Модель данных в PostgreSQL
+
 ```plantuml
 @startuml
 class OrgTreeEdge {
@@ -43,4 +44,3 @@ OrgTreeNode -- Sensor: "Вершина дерева\nописывает сенс
 Sensor -- SensorType: "Датчик типа"
 @enduml
 ```
-

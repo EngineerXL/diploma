@@ -2,7 +2,7 @@ openapi: "3.0.0"
 info:
   version: "1.0.0"
   title: "Admin API"
-  description: Administration API for managing org units and sensors
+  description: "Administration API for managing org units and sensors"
 servers:
   - url: http://localhost:8080
 
@@ -57,8 +57,8 @@ paths:
     get:
       summary: "Read org tree node"
       parameters:
-        - name: OrgTreeNode_id
-          description: The unique identifier of the sensor
+        - name: "OrgTreeNode_id"
+          description: "The unique identifier of the sensor"
           in: path
           required: true
           schema:
@@ -77,19 +77,67 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /sensorTypes:
+    post:
+      summary: "Create new sensor type"
+      requestBody:
+        description: "Sensor type information"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SensorType"
+      responses:
+        200:
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SensorType"
+        500:
+          description: "Can't add sensor type"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /sensor:
+    post:
+      summary: "Create new sensor"
+      requestBody:
+        description: "Sensor information"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Sensor"
+      responses:
+        200:
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sensor"
+        500:
+          description: "Can't add sensor"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /sensor/{sensor_id}:
     parameters:
-      - name: sensor_id
-        description: The unique identifier of the sensor
+      - name: "sensor_id"
+        description: "The unique identifier of the sensor"
         in: path
         required: true
         schema:
           $ref: "#/components/schemas/Sensor_id"
     get:
-      summary: Read a entity
+      summary: "Read sensor"
       responses:
         200:
-          description: Sensor information
+          description: "Sensor information"
           content:
             application/json:
               schema:
@@ -100,16 +148,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        500:
-          description: Unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
     put:
-      summary: Redefine sensor properties
+      summary: "Redefine sensor properties"
       requestBody:
-        description: Sensor information
+        description: "Sensor information"
         required: true
         content:
           application/json:
@@ -117,37 +159,66 @@ paths:
               $ref: "#/components/schemas/Sensor"
       responses:
         200:
-          description: Succefully updated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Sensor"
-
-  /sensor:
-    post:
-      summary: Create new sensor
-      requestBody:
-        description: Sensor information
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Sensor"
-      responses:
-        200:
-          description: Sensor added succefully
+          description: "Succefully updated"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Sensor"
         404:
-          description: Can't add sensor
+          description: "Sensor not found"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         500:
           description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /OrgUnits:
+    post:
+      summary: "Create org tree unit"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrgUnit"
+      responses:
+        200:
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgUnit"
+        500:
+          description: "Can't add organization unit"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /orgUnits/{OrgUnit_id}:
+    get:
+      summary: "Read organization unit"
+      parameters:
+        - name: "OrgUnit_id"
+          description: "The unique identifier of organization unit"
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/OrgUnit_id"
+      responses:
+        200:
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgUnit"
+        404:
+          description: "Organization unit not found"
           content:
             application/json:
               schema:
@@ -156,7 +227,7 @@ paths:
 components:
   schemas:
     OrgTreeNode_id:
-      description: The unique identifier of an organization tree node
+      description: "The unique identifier of an organization tree node"
       type: "integer"
       format: "int64_t"
 
@@ -194,7 +265,7 @@ components:
           format: "int64_t"
 
     OrgUnit_id:
-      description: The unique identifier of an organization tree node
+      description: "The unique identifier of an organization unit"
       type: "integer"
       format: "int64_t"
 
@@ -216,12 +287,12 @@ components:
           type: "string"
 
     Sensor_id:
-      description: The unique identifier of a sensor
+      description: "The unique identifier of a sensor"
       type: "integer"
       format: "int64_t"
 
     SensorType_id:
-      description: The unique identifier ot a sensor type
+      description: "The unique identifier ot a sensor type"
       type: "integer"
       format: "int64_t"
 
