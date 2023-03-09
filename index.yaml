@@ -7,7 +7,7 @@ servers:
   - url: http://localhost:8080
 
 paths:
-  /edges:
+  /OrgTreeEdges:
     post:
       summary: "Create org tree edge"
       requestBody:
@@ -30,7 +30,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /nodes:
+  /OrgTreeNodes:
     post:
       summary: "Create org tree node"
       requestBody:
@@ -53,7 +53,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /nodes/{OrgTreeNode_id}:
+  /OrgTreeNodes/{OrgTreeNode_id}:
     get:
       summary: "Read org tree node"
       parameters:
@@ -77,7 +77,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /sensorTypes:
+  /SensorTypes:
     post:
       summary: "Create new sensor type"
       requestBody:
@@ -101,7 +101,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /sensor:
+  /Sensors:
     post:
       summary: "Create new sensor"
       requestBody:
@@ -125,9 +125,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /sensor/{sensor_id}:
+  /Sensors/{Sensor_id}:
     parameters:
-      - name: "sensor_id"
+      - name: "Sensor_id"
         description: "The unique identifier of the sensor"
         in: path
         required: true
@@ -200,7 +200,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /orgUnits/{OrgUnit_id}:
+  /OrgUnits/{OrgUnit_id}:
     get:
       summary: "Read organization unit"
       parameters:
@@ -234,13 +234,13 @@ components:
     OrgTreeEdge:
       type: "object"
       required:
-        - "node_id_u"
-        - "node_id_v"
+        - "id_u"
+        - "id_v"
         - "parent"
       properties:
-        node_id_u:
+        id_u:
           $ref: "#/components/schemas/OrgTreeNode_id"
-        node_id_v:
+        id_v:
           $ref: "#/components/schemas/OrgTreeNode_id"
         parent:
           description: "true - u is parent of v, false - v is parent of u"
@@ -300,16 +300,16 @@ components:
       type: "object"
       required:
         - "id"
-        - "frequency"
-        - "dimension"
+        - "freq"
+        - "dim"
         - "info"
       properties:
         id:
           $ref: "#/components/schemas/SensorType_id"
-        frequency:
+        freq:
           type: "integer"
           format: "int64_t"
-        dimension:
+        dim:
           type: "integer"
           format: "int64_t"
         info:
@@ -319,7 +319,7 @@ components:
       type: "object"
       required:
         - "id"
-        - "type"
+        - "type_id"
       properties:
         id:
           $ref: "#/components/schemas/Sensor_id"

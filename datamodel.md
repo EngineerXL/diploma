@@ -5,8 +5,9 @@
 ```plantuml
 @startuml
 class OrgTreeEdge {
-  -int64_t node_id_u
-  -int64_t node_id_v
+  -int64_t id
+  -int64_t id_u
+  -int64_t id_v
   -bool parent
 }
 
@@ -30,8 +31,8 @@ class Sensor{
 
 class SensorType{
   -int64_t id
-  -int64_t frequency
-  -int64_t dimension
+  -int64_t freq
+  -int64_t dim
   -string info
 }
 
