@@ -83,6 +83,96 @@ app.add_middleware(
 )
 
 
+def OrgTreeNode_to_schema(db_OrgTreeNode: OrgTreeNode):
+    return {
+        "id": db_OrgTreeNode.id,
+        "type": db_OrgTreeNode.type,
+        "object_id": db_OrgTreeNode.object_id
+    }
+
+
+@app.get("/OrgTreeNodes/{OrgTreeNode_id}")
+async def get_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_db)):
+    db_OrgTreeNode = db.get(OrgTreeNode, OrgTreeNode_id)
+    if db_OrgTreeNode is None:
+        raise HTTPException(status_code=404, detail="OrgTreeNode not found")
+    return OrgTreeNode_to_schema(db_OrgTreeNode)
+
+
+def check_OrgUnit(OrgUnit_id: int, db: Session = Depends(get_db)):
+    db_OrgUnit = db.get(OrgUnit, OrgUnit_id)
+    return False if db_OrgUnit == None else True
+
+
+def check_Sensor(Sensor_id: int, db: Session = Depends(get_db)):
+    db_Sensor = db.get(Sensor, Sensor_id)
+    return False if db_Sensor == None else True
+
+
+@app.post("/OrgTreeNodes")
+async def add_OrgTreeNode(request: Request, db: Session = Depends(get_db)):
+    param_json = await request.json()
+    node_type = param_json["type"]
+    obj_id = param_json["object_id"]
+    if (node_type == "sensor"):
+        if not (check_Sensor(obj_id, db)):
+            raise HTTPException(
+                status_code=404, detail="Sensor " + str(obj_id) + " not found")
+    elif (node_type == "orgunit"):
+        if not (check_OrgUnit(obj_id, db)):
+            raise HTTPException(
+                status_code=404, detail="Sensor " + str(obj_id) + " not found")
+    else:
+        raise HTTPException(
+            status_code=500, detail="Invalid type")
+    db_OrgTreeNode = OrgTreeNode(type=node_type, object_id=obj_id)
+    db.add(db_OrgTreeNode)
+    db.commit()
+    db.refresh(db_OrgTreeNode)
+    db.commit()
+    return OrgTreeNode_to_schema(db_OrgTreeNode)
+
+
+def check_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_db)):
+    db_OrgTreeNode = db.get(OrgTreeNode, OrgTreeNode_id)
+    return False if db_OrgTreeNode == None else True
+
+
+def OrgTreeEdge_to_schema(db_OrgTreeEdge: OrgTreeEdge):
+    return {
+        "id_u": db_OrgTreeEdge.id_u,
+        "id_v": db_OrgTreeEdge.id_v,
+        "parent": db_OrgTreeEdge.parent
+    }
+
+
+@app.post("/OrgTreeEdges")
+async def add_OrgTreeEdge(request: Request, db: Session = Depends(get_db)):
+    param_json = await request.json()
+    u = param_json["id_u"]
+    v = param_json["id_v"]
+    if (u == v):
+        raise HTTPException(
+            status_code=500, detail="Can't add self edge")
+    if not (check_OrgTreeNode(u, db)):
+        raise HTTPException(
+            status_code=404, detail="OrgTreeNode " + str(u) + " not found")
+    if not (check_OrgTreeNode(v, db)):
+        raise HTTPException(
+            status_code=404, detail="OrgTreeNode " + str(v) + " not found")
+    db_OrgTreeEdge = db.execute(
+        text("select * from \"OrgTreeEdges\" where id_u = " + str(u) + " AND id_v = " + str(v))).fetchone()
+    if (db_OrgTreeEdge != None):
+        raise HTTPException(
+            status_code=500, detail="Edges already exist")
+    db_OrgTreeEdge = OrgTreeEdge(id_u=u, id_v=v, parent=param_json["parent"])
+    db.add(db_OrgTreeEdge)
+    db.commit()
+    db.refresh(db_OrgTreeEdge)
+    db.commit()
+    return OrgTreeEdge_to_schema(db_OrgTreeEdge)
+
+
 def Sensor_to_schema(db_Sensor: Sensor):
     return {
         "id": db_Sensor.id,
@@ -91,8 +181,7 @@ def Sensor_to_schema(db_Sensor: Sensor):
 
 
 def check_SensorType(SensorType_id: int, db: Session = Depends(get_db)):
-    db_SensorType = db.execute(
-        text("select * from \"SensorTypes\" where id = %s" % SensorType_id)).fetchone()
+    db_SensorType = db.get(SensorType, SensorType_id)
     return False if db_SensorType == None else True
 
 

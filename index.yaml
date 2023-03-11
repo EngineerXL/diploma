@@ -29,6 +29,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        500:
+          description: "Can't add org tree edge"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /OrgTreeNodes:
     post:
@@ -46,6 +52,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrgTreeNode"
+        404:
+          description: "Object not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         500:
           description: "Can't add org tree node"
           content:
@@ -252,14 +264,14 @@ components:
       required:
         - "id"
         - "type"
-        - "object-id"
+        - "object_id"
       properties:
         id:
           $ref: "#/components/schemas/OrgTreeNode_id"
         type:
           description: '"Sensor" or "OrgUnit"'
           type: string
-        object-id:
+        object_id:
           description: "OrgUnit_id or Sensor_id"
           type: "integer"
           format: "int64_t"
