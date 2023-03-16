@@ -1,10 +1,11 @@
 from fastapi import Depends, FastAPI, HTTPException, Request
-from sqlalchemy import Column, BigInteger, Text, Boolean, exc
+from sqlalchemy import Column, BigInteger, Text, Boolean, Date, exc
 from sqlalchemy.sql import text
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import Session
+from datetime import date
 import json
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -22,6 +23,7 @@ class OrgTreeEdge(Base):
     id_u = Column(BigInteger)
     id_v = Column(BigInteger)
     parent = Column(Boolean)
+    date = Column(Date)
 
 
 class OrgTreeNode(Base):
@@ -29,6 +31,7 @@ class OrgTreeNode(Base):
     id = Column(BigInteger, primary_key=True, index=True)
     type = Column(Text)
     object_id = Column(BigInteger)
+    date = Column(Date)
 
 
 class OrgUnit(Base):
@@ -37,12 +40,14 @@ class OrgUnit(Base):
     name = Column(Text)
     type = Column(Text)
     json = Column(Text)
+    date = Column(Date)
 
 
 class Sensor(Base):
     __tablename__ = "Sensors"
     id = Column(BigInteger, primary_key=True, index=True)
     type = Column(BigInteger)
+    date = Column(Date)
 
 
 class SensorType(Base):
@@ -87,7 +92,8 @@ def OrgTreeNode_to_schema(db_OrgTreeNode: OrgTreeNode):
     return {
         "id": db_OrgTreeNode.id,
         "type": db_OrgTreeNode.type,
-        "object_id": db_OrgTreeNode.object_id
+        "object_id": db_OrgTreeNode.object_id,
+        "date": db_OrgTreeNode.date
     }
 
 
@@ -97,6 +103,37 @@ async def get_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_db)):
     if db_OrgTreeNode is None:
         raise HTTPException(status_code=404, detail="OrgTreeNode not found")
     return OrgTreeNode_to_schema(db_OrgTreeNode)
+
+
+def db_get_adj(u: int, db: Session = Depends(get_db)):
+    parent = db.execute(text(
+        "SELECT id_v FROM \"OrgTreeEdges\" WHERE id_u = " + str(u) + " AND parent = true")).fetchone()
+    lst_adj = db.execute(text(
+        "SELECT id_v FROM \"OrgTreeEdges\" WHERE id_u = " + str(u) + " AND parent = false")).all()
+    return parent, lst_adj
+
+
+def delete_node(OrgTreeNode_id: int, db: Session = Depends(get_db)):
+    db_OrgTreeNode = db.get(OrgTreeNode, OrgTreeNode_id)
+    if db_OrgTreeNode is None:
+        raise HTTPException(status_code=404, detail="OrgTreeNode not found")
+    u = db_OrgTreeNode.id
+    parent, adj = db_get_adj(u, db)
+    delete_edge(u, parent[0], db)
+    db_OrgTreeNode.date = date.today()
+    db.commit()
+    for v in adj:
+        delete_node(v[0], db)
+    return OrgTreeNode_to_schema(db_OrgTreeNode)
+
+
+@app.delete("/OrgTreeNodes/{OrgTreeNode_id}")
+async def delete_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_db)):
+    try:
+        res = delete_node(OrgTreeNode_id, db)
+        return res
+    except BaseException as ex:
+        raise ex
 
 
 def check_OrgUnit(OrgUnit_id: int, db: Session = Depends(get_db)):
@@ -128,8 +165,6 @@ async def add_OrgTreeNode(request: Request, db: Session = Depends(get_db)):
     db_OrgTreeNode = OrgTreeNode(type=node_type, object_id=obj_id)
     db.add(db_OrgTreeNode)
     db.commit()
-    db.refresh(db_OrgTreeNode)
-    db.commit()
     return OrgTreeNode_to_schema(db_OrgTreeNode)
 
 
@@ -140,9 +175,11 @@ def check_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_db)):
 
 def OrgTreeEdge_to_schema(db_OrgTreeEdge: OrgTreeEdge):
     return {
+        "id": db_OrgTreeEdge.id,
         "id_u": db_OrgTreeEdge.id_u,
         "id_v": db_OrgTreeEdge.id_v,
-        "parent": db_OrgTreeEdge.parent
+        "parent": db_OrgTreeEdge.parent,
+        "date": db_OrgTreeEdge.date
     }
 
 
@@ -160,23 +197,56 @@ async def add_OrgTreeEdge(request: Request, db: Session = Depends(get_db)):
     if not (check_OrgTreeNode(v, db)):
         raise HTTPException(
             status_code=404, detail="OrgTreeNode " + str(v) + " not found")
-    db_OrgTreeEdge = db.execute(
-        text("select * from \"OrgTreeEdges\" where id_u = " + str(u) + " AND id_v = " + str(v))).fetchone()
+    db_OrgTreeEdge = db_get_edge(u, v, db)
     if (db_OrgTreeEdge != None):
         raise HTTPException(
             status_code=500, detail="Edges already exist")
-    db_OrgTreeEdge = OrgTreeEdge(id_u=u, id_v=v, parent=param_json["parent"])
-    db.add(db_OrgTreeEdge)
+    db_OrgTreeEdge_uv = OrgTreeEdge(id_u=u, id_v=v, parent=False)
+    db.add(db_OrgTreeEdge_uv)
+    db_OrgTreeEdge_vu = OrgTreeEdge(id_u=v, id_v=u, parent=True)
+    db.add(db_OrgTreeEdge_vu)
     db.commit()
-    db.refresh(db_OrgTreeEdge)
+    return OrgTreeEdge_to_schema(db_OrgTreeEdge_uv)
+
+
+def db_get_edge(u: int, v: int, db: Session = Depends(get_db)):
+    return db.execute(text(
+        "SELECT * FROM \"OrgTreeEdges\" WHERE id_u = " + str(u) + " AND id_v = " + str(v))).fetchone()
+
+
+def inv_edge_id(id: int):
+    return ((id - 1) ^ 1) + 1
+
+
+def delete_edge(u: int, v: int, db: Depends(get_db)):
+    db_OrgTreeEdge = db_get_edge(u, v, db)
+    if db_OrgTreeEdge is None:
+        raise HTTPException(status_code=404, detail="OrgTreeEdge not found")
+    db_OrgTreeEdge_uv = db.get(OrgTreeEdge, db_OrgTreeEdge.id)
+    db_OrgTreeEdge_vu = db.get(OrgTreeEdge, inv_edge_id(db_OrgTreeEdge.id))
+    db_OrgTreeEdge_uv.date = date.today()
+    db_OrgTreeEdge_vu.date = date.today()
+    if (db_OrgTreeEdge_uv.id_u != db_OrgTreeEdge_vu.id_v or db_OrgTreeEdge_uv.id_v != db_OrgTreeEdge_vu.id_u):
+        raise HTTPException(status_code=500, detail="FAIL, incorrect edges!")
     db.commit()
-    return OrgTreeEdge_to_schema(db_OrgTreeEdge)
+    return OrgTreeEdge_to_schema(db_OrgTreeEdge_uv)
+
+
+@app.delete("/OrgTreeEdges")
+async def delete_OrgTreeEdge(request: Request, db: Session = Depends(get_db)):
+    param_json = await request.json()
+    try:
+        res = delete_edge(param_json["id_u"], param_json["id_v"], db)
+        return res
+    except BaseException as ex:
+        raise ex
 
 
 def Sensor_to_schema(db_Sensor: Sensor):
     return {
         "id": db_Sensor.id,
-        "type": db_Sensor.type
+        "type": db_Sensor.type,
+        "date": db_Sensor.date
     }
 
 
@@ -185,7 +255,7 @@ def check_SensorType(SensorType_id: int, db: Session = Depends(get_db)):
     return False if db_SensorType == None else True
 
 
-@app.post("/Sensors")
+@ app.post("/Sensors")
 async def add_Sensor(request: Request, db: Session = Depends(get_db)):
     param_json = await request.json()
     if not (check_SensorType(param_json["type"], db)):
@@ -193,12 +263,10 @@ async def add_Sensor(request: Request, db: Session = Depends(get_db)):
     db_Sensor = Sensor(type=param_json["type"])
     db.add(db_Sensor)
     db.commit()
-    db.refresh(db_Sensor)
-    db.commit()
     return Sensor_to_schema(db_Sensor)
 
 
-@app.get("/Sensors/{Sensor_id}")
+@ app.get("/Sensors/{Sensor_id}")
 async def get_Sensor(Sensor_id: int, db: Session = Depends(get_db)):
     db_Sensor = db.get(Sensor, Sensor_id)
     if db_Sensor is None:
@@ -206,7 +274,7 @@ async def get_Sensor(Sensor_id: int, db: Session = Depends(get_db)):
     return Sensor_to_schema(db_Sensor)
 
 
-@app.put("/Sensors/{Sensor_id}")
+@ app.put("/Sensors/{Sensor_id}")
 async def edit_Sensor(Sensor_id: int, request: Request, db: Session = Depends(get_db)):
     db_Sensor = db.get(Sensor, Sensor_id)
     if db_Sensor is None:
@@ -215,6 +283,16 @@ async def edit_Sensor(Sensor_id: int, request: Request, db: Session = Depends(ge
     if not (check_SensorType(param_json["type"], db)):
         raise HTTPException(status_code=500, detail="Sensor type not found")
     db_Sensor.type = param_json["type"]
+    db.commit()
+    return Sensor_to_schema(db_Sensor)
+
+
+@app.delete("/Sensors/{Sensor_id}")
+async def delete_Sensor(Sensor_id: int, request: Request, db: Session = Depends(get_db)):
+    db_Sensor = db.get(Sensor, Sensor_id)
+    if db_Sensor is None:
+        raise HTTPException(status_code=404, detail="Sensor not found")
+    db_Sensor.date = date.today()
     db.commit()
     return Sensor_to_schema(db_Sensor)
 
@@ -228,15 +306,13 @@ def SensorType_to_schema(db_SensorType: SensorType):
     }
 
 
-@app.post("/SensorTypes")
+@ app.post("/SensorTypes")
 async def add_SensorType(request: Request, db: Session = Depends(get_db)):
     params = await request.json()
     db_SensorType = SensorType(freq=params["freq"],
                                dim=params["dim"],
                                info=params["info"])
     db.add(db_SensorType)
-    db.commit()
-    db.refresh(db_SensorType)
     db.commit()
     return SensorType_to_schema(db_SensorType)
 
@@ -246,7 +322,8 @@ def OrgUnit_to_schema(db_OrgUnit: OrgUnit):
         "id": db_OrgUnit.id,
         "name": db_OrgUnit.name,
         "type": db_OrgUnit.type,
-        "json": db_OrgUnit.json
+        "json": db_OrgUnit.json,
+        "date": db_OrgUnit.date
     }
 
 
@@ -258,8 +335,6 @@ async def add_OrgUnit(request: Request, db: Session = Depends(get_db)):
                          json=params["json"])
     db.add(db_OrgUnit)
     db.commit()
-    db.refresh(db_OrgUnit)
-    db.commit()
     return OrgUnit_to_schema(db_OrgUnit)
 
 
@@ -268,4 +343,14 @@ async def get_OrgUnit(OrgUnit_id: int, db: Session = Depends(get_db)):
     db_OrgUnit = db.get(OrgUnit, OrgUnit_id)
     if db_OrgUnit is None:
         raise HTTPException(status_code=404, detail="OrgUnit not found")
+    return OrgUnit_to_schema(db_OrgUnit)
+
+
+@app.delete("/OrgUnits/{OrgUnit_id}")
+async def delete_OrgUnit(OrgUnit_id: int, db: Session = Depends(get_db)):
+    db_OrgUnit = db.get(OrgUnit, OrgUnit_id)
+    if db_OrgUnit is None:
+        raise HTTPException(status_code=404, detail="OrgUnit not found")
+    db_OrgUnit.date = date.today()
+    db.commit()
     return OrgUnit_to_schema(db_OrgUnit)

@@ -18,7 +18,7 @@ paths:
               $ref: "#/components/schemas/OrgTreeEdge"
       responses:
         200:
-          description: "OK"
+          description: "OK, org tree edge entry"
           content:
             application/json:
               schema:
@@ -31,6 +31,27 @@ paths:
                 $ref: "#/components/schemas/Error"
         500:
           description: "Can't add org tree edge"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      summary: "Delete org tree edge"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrgTreeEdge"
+      responses:
+        200:
+          description: "OK, deleted org tree edge entry"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgTreeEdge"
+        404:
+          description: "Org tree edge not found"
           content:
             application/json:
               schema:
@@ -70,14 +91,36 @@ paths:
       summary: "Read org tree node"
       parameters:
         - name: "OrgTreeNode_id"
-          description: "The unique identifier of the sensor"
+          description: "The unique identifier of org tree node"
           in: path
           required: true
           schema:
             $ref: "#/components/schemas/OrgTreeNode_id"
       responses:
         200:
-          description: "OK"
+          description: "OK, org tree node entry"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgTreeNode"
+        404:
+          description: "Org tree node not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      summary: "Delete org tree node"
+      parameters:
+        - name: "OrgTreeNode_id"
+          description: "The unique identifier of org tree node"
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/OrgTreeNode_id"
+      responses:
+        200:
+          description: "OK, deleted org tree node entry"
           content:
             application/json:
               schema:
@@ -101,7 +144,7 @@ paths:
               $ref: "#/components/schemas/SensorType"
       responses:
         200:
-          description: "OK"
+          description: "OK, sensor type entry"
           content:
             application/json:
               schema:
@@ -117,7 +160,7 @@ paths:
     post:
       summary: "Create new sensor"
       requestBody:
-        description: "Sensor information"
+        description: "Sensor data"
         required: true
         content:
           application/json:
@@ -125,7 +168,7 @@ paths:
               $ref: "#/components/schemas/Sensor"
       responses:
         200:
-          description: "OK"
+          description: "OK, sensor entry"
           content:
             application/json:
               schema:
@@ -149,7 +192,7 @@ paths:
       summary: "Read sensor"
       responses:
         200:
-          description: "Sensor information"
+          description: "OK, sensor entry"
           content:
             application/json:
               schema:
@@ -171,7 +214,7 @@ paths:
               $ref: "#/components/schemas/Sensor"
       responses:
         200:
-          description: "Succefully updated"
+          description: "OK, updated sensor entry"
           content:
             application/json:
               schema:
@@ -188,6 +231,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+    delete:
+      summary: "Delete sensor"
+      responses:
+        200:
+          description: "OK, deleted sensor entry"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sensor"
+        404:
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /OrgUnits:
     post:
@@ -200,7 +258,7 @@ paths:
               $ref: "#/components/schemas/OrgUnit"
       responses:
         200:
-          description: "OK"
+          description: "OK, organization unit entry"
           content:
             application/json:
               schema:
@@ -224,7 +282,29 @@ paths:
             $ref: "#/components/schemas/OrgUnit_id"
       responses:
         200:
-          description: "OK"
+          description: "OK, organization unit entry"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgUnit"
+        404:
+          description: "Organization unit not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      summary: "Delete organization unit"
+      parameters:
+        - name: "OrgUnit_id"
+          description: "The unique identifier of organization unit"
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/OrgUnit_id"
+      responses:
+        200:
+          description: "OK, deleted organization unit entry"
           content:
             application/json:
               schema:
@@ -238,26 +318,42 @@ paths:
 
 components:
   schemas:
+    Date:
+      description: "Date of removal"
+      type: "string"
+      format: "date"
+
     OrgTreeNode_id:
       description: "The unique identifier of an organization tree node"
+      type: "integer"
+      format: "int64_t"
+
+    OrgTreeEdge_id:
+      description: "The unique identifier of an organization tree edge"
       type: "integer"
       format: "int64_t"
 
     OrgTreeEdge:
       type: "object"
       required:
+        - "id"
         - "id_u"
         - "id_v"
         - "parent"
+        - "date"
       properties:
+        id:
+          $ref: "#/components/schemas/OrgTreeEdge_id"
         id_u:
           $ref: "#/components/schemas/OrgTreeNode_id"
         id_v:
           $ref: "#/components/schemas/OrgTreeNode_id"
         parent:
-          description: "true - u is parent of v, false - v is parent of u"
+          description: "true - u is parent of v"
           type: "boolean"
           format: "bool"
+        date:
+          $ref: "#/components/schemas/Date"
 
     OrgTreeNode:
       type: "object"
@@ -265,6 +361,7 @@ components:
         - "id"
         - "type"
         - "object_id"
+        - "date"
       properties:
         id:
           $ref: "#/components/schemas/OrgTreeNode_id"
@@ -275,6 +372,8 @@ components:
           description: "OrgUnit_id or Sensor_id"
           type: "integer"
           format: "int64_t"
+        date:
+          $ref: "#/components/schemas/Date"
 
     OrgUnit_id:
       description: "The unique identifier of an organization unit"
@@ -288,6 +387,7 @@ components:
         - "name"
         - "type"
         - "json"
+        - "date"
       properties:
         id:
           $ref: "#/components/schemas/OrgUnit_id"
@@ -297,6 +397,8 @@ components:
           type: "string"
         json:
           type: "string"
+        date:
+          $ref: "#/components/schemas/Date"
 
     Sensor_id:
       description: "The unique identifier of a sensor"
@@ -332,11 +434,14 @@ components:
       required:
         - "id"
         - "type_id"
+        - "date"
       properties:
         id:
           $ref: "#/components/schemas/Sensor_id"
         type:
           $ref: "#/components/schemas/SensorType_id"
+        date:
+          $ref: "#/components/schemas/Date"
 
     Error:
       type: "object"
