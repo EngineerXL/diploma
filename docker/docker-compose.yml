@@ -1,0 +1,39 @@
+version: '3.3'
+
+services:
+  pgdb:
+    image: postgres
+    restart: always
+    volumes:
+      - db-volume:/var/lib/postgresql
+    ports:
+      - "25500:5432"
+    environment:
+      POSTGRES_DB: pgdb
+      POSTGRES_USER: pguser
+      POSTGRES_PASSWORD: pguser
+    networks:
+      - arch-network
+
+  chdb:
+    image: yandex/clickhouse-server
+    restart: always
+    volumes:
+      - db-volume:/var/lib/clickhouse
+    ports:
+      - "25501:9000"
+    environment:
+      CLICKHOUSE_DB: chdb
+      CLICKHOUSE_USER: chuser
+      CLICKHOUSE_PASSWORD: chuser
+    networks:
+      - arch-network
+
+volumes:
+  db-volume:
+    external: false
+
+networks:
+  arch-network:
+    driver: "bridge"
+    external: false

@@ -1,7 +1,6 @@
 from fastapi import Depends, FastAPI, HTTPException, Request
-from sqlalchemy import Column, BigInteger, Text, Boolean, Date, exc
+from sqlalchemy import create_engine, Column, MetaData, BigInteger, Text, Boolean, Date, exc
 from sqlalchemy.sql import text
-from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import Session
@@ -9,15 +8,26 @@ from datetime import date
 import json
 from fastapi.middleware.cors import CORSMiddleware
 
+from clickhouse_sqlalchemy import Table, make_session, get_declarative_base, types, engines
+
 # Start SQL Alchemy
-engine = create_engine(
-    'postgresql+psycopg2://pguser:pguser@localhost/pgdb', echo=True)
-conn = engine.connect()
+alchemy_engines = {
+    "pg": create_engine(
+        "postgresql+psycopg2://pguser:pguser@localhost:25500/pgdb", echo=True),
+    "ch": create_engine("clickhouse+native://chuser:chuser@localhost:25501/chdb", echo=True)
+}
 
-Base = declarative_base()
+metadatas = {
+    "ch": MetaData(bind=alchemy_engines["ch"])
+}
+
+bases = {
+    "pg": declarative_base(),
+    "ch": get_declarative_base(metadata=MetaData(bind=alchemy_engines["ch"]))
+}
 
 
-class OrgTreeEdge(Base):
+class OrgTreeEdge(bases["pg"]):
     __tablename__ = "OrgTreeEdges"
     id = Column(BigInteger, primary_key=True, index=True)
     id_u = Column(BigInteger)
@@ -26,7 +36,7 @@ class OrgTreeEdge(Base):
     date = Column(Date)
 
 
-class OrgTreeNode(Base):
+class OrgTreeNode(bases["pg"]):
     __tablename__ = "OrgTreeNodes"
     id = Column(BigInteger, primary_key=True, index=True)
     type = Column(Text)
@@ -34,7 +44,7 @@ class OrgTreeNode(Base):
     date = Column(Date)
 
 
-class OrgUnit(Base):
+class OrgUnit(bases["pg"]):
     __tablename__ = "OrgUnits"
     id = Column(BigInteger, primary_key=True, index=True)
     name = Column(Text)
@@ -43,14 +53,14 @@ class OrgUnit(Base):
     date = Column(Date)
 
 
-class Sensor(Base):
+class Sensor(bases["pg"]):
     __tablename__ = "Sensors"
     id = Column(BigInteger, primary_key=True, index=True)
     type = Column(BigInteger)
     date = Column(Date)
 
 
-class SensorType(Base):
+class SensorType(bases["pg"]):
     __tablename__ = "SensorTypes"
     id = Column(BigInteger, primary_key=True, index=True)
     freq = Column(BigInteger)
@@ -58,11 +68,39 @@ class SensorType(Base):
     info = Column(Text)
 
 
-Base.metadata.create_all(engine)
+bases["pg"].metadata.create_all(bind=alchemy_engines["pg"])
 
 
-def get_db():
-    Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+class CH_Sensor(bases["ch"]):
+    __tablename__ = "CH_Sensors"
+    id = Column(types.Int64, primary_key=True, index=True)
+    value = Column(types.Float64)
+    date = Column(types.Date)
+
+    __table_args__ = (
+        engines.Memory(),
+    )
+
+
+try:
+    # Emits CREATE TABLE statement
+    r = CH_Sensor.__table__.create()
+except BaseException as ex:
+    # print(ex.args)
+    pass
+
+
+def get_chdb():
+    db = make_session(alchemy_engines["ch"])
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_pgdb():
+    Session = sessionmaker(
+        autocommit=False, autoflush=False, bind=alchemy_engines["pg"])
     db = Session()
     try:
         yield db
@@ -88,6 +126,31 @@ app.add_middleware(
 )
 
 
+def CH_Sensor_to_schema(db_CH_Sensor: CH_Sensor):
+    return {
+        "id": db_CH_Sensor.id,
+        "value": db_CH_Sensor.value,
+        "date": db_CH_Sensor.date,
+    }
+
+
+@ app.post("/CH")
+async def add_SensorType(request: Request, db: Session = Depends(get_chdb)):
+    # params = await request.json()
+    # db_CH_Sensor = SensorType(value=params["value"])
+    db_CH_Sensor = CH_Sensor(value=1, date=date.today())
+    db.add(db_CH_Sensor)
+    db.commit()
+    return SensorType_to_schema(db_CH_Sensor)
+
+
+# @ app.get("/CH/{Sensor_id}")
+# async def get_Sensor(Sensor_id: int, db: Session = Depends(get_pgdb)):
+#     db_Sensor = db.get(Sensor, Sensor_id)
+#     if db_Sensor is None:
+#         raise HTTPException(status_code=404, detail="Sensor not found")
+#     return Sensor_to_schema(db_Sensor)
+
 def OrgTreeNode_to_schema(db_OrgTreeNode: OrgTreeNode):
     return {
         "id": db_OrgTreeNode.id,
@@ -98,14 +161,14 @@ def OrgTreeNode_to_schema(db_OrgTreeNode: OrgTreeNode):
 
 
 @app.get("/OrgTreeNodes/{OrgTreeNode_id}")
-async def get_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_db)):
+async def get_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_pgdb), db2: Session = Depends(get_chdb)):
     db_OrgTreeNode = db.get(OrgTreeNode, OrgTreeNode_id)
     if db_OrgTreeNode is None:
         raise HTTPException(status_code=404, detail="OrgTreeNode not found")
     return OrgTreeNode_to_schema(db_OrgTreeNode)
 
 
-def db_get_adj(u: int, db: Session = Depends(get_db)):
+def db_get_adj(u: int, db: Session = Depends(get_pgdb)):
     parent = db.execute(text(
         "SELECT id_v FROM \"OrgTreeEdges\" WHERE id_u = " + str(u) + " AND parent = true")).fetchone()
     lst_adj = db.execute(text(
@@ -113,7 +176,7 @@ def db_get_adj(u: int, db: Session = Depends(get_db)):
     return parent, lst_adj
 
 
-def delete_node(OrgTreeNode_id: int, db: Session = Depends(get_db)):
+def delete_node(OrgTreeNode_id: int, db: Session = Depends(get_pgdb)):
     db_OrgTreeNode = db.get(OrgTreeNode, OrgTreeNode_id)
     if db_OrgTreeNode is None:
         raise HTTPException(status_code=404, detail="OrgTreeNode not found")
@@ -127,8 +190,8 @@ def delete_node(OrgTreeNode_id: int, db: Session = Depends(get_db)):
     return OrgTreeNode_to_schema(db_OrgTreeNode)
 
 
-@app.delete("/OrgTreeNodes/{OrgTreeNode_id}")
-async def delete_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_db)):
+@ app.delete("/OrgTreeNodes/{OrgTreeNode_id}")
+async def delete_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_pgdb)):
     try:
         res = delete_node(OrgTreeNode_id, db)
         return res
@@ -136,18 +199,18 @@ async def delete_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_db))
         raise ex
 
 
-def check_OrgUnit(OrgUnit_id: int, db: Session = Depends(get_db)):
+def check_OrgUnit(OrgUnit_id: int, db: Session = Depends(get_pgdb)):
     db_OrgUnit = db.get(OrgUnit, OrgUnit_id)
     return False if db_OrgUnit == None else True
 
 
-def check_Sensor(Sensor_id: int, db: Session = Depends(get_db)):
+def check_Sensor(Sensor_id: int, db: Session = Depends(get_pgdb)):
     db_Sensor = db.get(Sensor, Sensor_id)
     return False if db_Sensor == None else True
 
 
-@app.post("/OrgTreeNodes")
-async def add_OrgTreeNode(request: Request, db: Session = Depends(get_db)):
+@ app.post("/OrgTreeNodes")
+async def add_OrgTreeNode(request: Request, db: Session = Depends(get_pgdb)):
     param_json = await request.json()
     node_type = param_json["type"]
     obj_id = param_json["object_id"]
@@ -168,7 +231,7 @@ async def add_OrgTreeNode(request: Request, db: Session = Depends(get_db)):
     return OrgTreeNode_to_schema(db_OrgTreeNode)
 
 
-def check_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_db)):
+def check_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_pgdb)):
     db_OrgTreeNode = db.get(OrgTreeNode, OrgTreeNode_id)
     return False if db_OrgTreeNode == None else True
 
@@ -183,8 +246,8 @@ def OrgTreeEdge_to_schema(db_OrgTreeEdge: OrgTreeEdge):
     }
 
 
-@app.post("/OrgTreeEdges")
-async def add_OrgTreeEdge(request: Request, db: Session = Depends(get_db)):
+@ app.post("/OrgTreeEdges")
+async def add_OrgTreeEdge(request: Request, db: Session = Depends(get_pgdb)):
     param_json = await request.json()
     u = param_json["id_u"]
     v = param_json["id_v"]
@@ -209,7 +272,7 @@ async def add_OrgTreeEdge(request: Request, db: Session = Depends(get_db)):
     return OrgTreeEdge_to_schema(db_OrgTreeEdge_uv)
 
 
-def db_get_edge(u: int, v: int, db: Session = Depends(get_db)):
+def db_get_edge(u: int, v: int, db: Session = Depends(get_pgdb)):
     return db.execute(text(
         "SELECT * FROM \"OrgTreeEdges\" WHERE id_u = " + str(u) + " AND id_v = " + str(v))).fetchone()
 
@@ -218,7 +281,7 @@ def inv_edge_id(id: int):
     return ((id - 1) ^ 1) + 1
 
 
-def delete_edge(u: int, v: int, db: Depends(get_db)):
+def delete_edge(u: int, v: int, db: Depends(get_pgdb)):
     db_OrgTreeEdge = db_get_edge(u, v, db)
     if db_OrgTreeEdge is None:
         raise HTTPException(status_code=404, detail="OrgTreeEdge not found")
@@ -232,8 +295,8 @@ def delete_edge(u: int, v: int, db: Depends(get_db)):
     return OrgTreeEdge_to_schema(db_OrgTreeEdge_uv)
 
 
-@app.delete("/OrgTreeEdges")
-async def delete_OrgTreeEdge(request: Request, db: Session = Depends(get_db)):
+@ app.delete("/OrgTreeEdges")
+async def delete_OrgTreeEdge(request: Request, db: Session = Depends(get_pgdb)):
     param_json = await request.json()
     try:
         res = delete_edge(param_json["id_u"], param_json["id_v"], db)
@@ -250,13 +313,13 @@ def Sensor_to_schema(db_Sensor: Sensor):
     }
 
 
-def check_SensorType(SensorType_id: int, db: Session = Depends(get_db)):
+def check_SensorType(SensorType_id: int, db: Session = Depends(get_pgdb)):
     db_SensorType = db.get(SensorType, SensorType_id)
     return False if db_SensorType == None else True
 
 
 @ app.post("/Sensors")
-async def add_Sensor(request: Request, db: Session = Depends(get_db)):
+async def add_Sensor(request: Request, db: Session = Depends(get_pgdb)):
     param_json = await request.json()
     if not (check_SensorType(param_json["type"], db)):
         raise HTTPException(status_code=500, detail="Sensor type not found")
@@ -267,7 +330,7 @@ async def add_Sensor(request: Request, db: Session = Depends(get_db)):
 
 
 @ app.get("/Sensors/{Sensor_id}")
-async def get_Sensor(Sensor_id: int, db: Session = Depends(get_db)):
+async def get_Sensor(Sensor_id: int, db: Session = Depends(get_pgdb)):
     db_Sensor = db.get(Sensor, Sensor_id)
     if db_Sensor is None:
         raise HTTPException(status_code=404, detail="Sensor not found")
@@ -275,7 +338,7 @@ async def get_Sensor(Sensor_id: int, db: Session = Depends(get_db)):
 
 
 @ app.put("/Sensors/{Sensor_id}")
-async def edit_Sensor(Sensor_id: int, request: Request, db: Session = Depends(get_db)):
+async def edit_Sensor(Sensor_id: int, request: Request, db: Session = Depends(get_pgdb)):
     db_Sensor = db.get(Sensor, Sensor_id)
     if db_Sensor is None:
         raise HTTPException(status_code=404, detail="Sensor not found")
@@ -287,8 +350,8 @@ async def edit_Sensor(Sensor_id: int, request: Request, db: Session = Depends(ge
     return Sensor_to_schema(db_Sensor)
 
 
-@app.delete("/Sensors/{Sensor_id}")
-async def delete_Sensor(Sensor_id: int, request: Request, db: Session = Depends(get_db)):
+@ app.delete("/Sensors/{Sensor_id}")
+async def delete_Sensor(Sensor_id: int, request: Request, db: Session = Depends(get_pgdb)):
     db_Sensor = db.get(Sensor, Sensor_id)
     if db_Sensor is None:
         raise HTTPException(status_code=404, detail="Sensor not found")
@@ -307,7 +370,7 @@ def SensorType_to_schema(db_SensorType: SensorType):
 
 
 @ app.post("/SensorTypes")
-async def add_SensorType(request: Request, db: Session = Depends(get_db)):
+async def add_SensorType(request: Request, db: Session = Depends(get_pgdb)):
     params = await request.json()
     db_SensorType = SensorType(freq=params["freq"],
                                dim=params["dim"],
@@ -327,8 +390,8 @@ def OrgUnit_to_schema(db_OrgUnit: OrgUnit):
     }
 
 
-@app.post("/OrgUnits")
-async def add_OrgUnit(request: Request, db: Session = Depends(get_db)):
+@ app.post("/OrgUnits")
+async def add_OrgUnit(request: Request, db: Session = Depends(get_pgdb)):
     params = await request.json()
     db_OrgUnit = OrgUnit(name=params["name"],
                          type=params["type"],
@@ -338,16 +401,16 @@ async def add_OrgUnit(request: Request, db: Session = Depends(get_db)):
     return OrgUnit_to_schema(db_OrgUnit)
 
 
-@app.get("/OrgUnits/{OrgUnit_id}")
-async def get_OrgUnit(OrgUnit_id: int, db: Session = Depends(get_db)):
+@ app.get("/OrgUnits/{OrgUnit_id}")
+async def get_OrgUnit(OrgUnit_id: int, db: Session = Depends(get_pgdb)):
     db_OrgUnit = db.get(OrgUnit, OrgUnit_id)
     if db_OrgUnit is None:
         raise HTTPException(status_code=404, detail="OrgUnit not found")
     return OrgUnit_to_schema(db_OrgUnit)
 
 
-@app.delete("/OrgUnits/{OrgUnit_id}")
-async def delete_OrgUnit(OrgUnit_id: int, db: Session = Depends(get_db)):
+@ app.delete("/OrgUnits/{OrgUnit_id}")
+async def delete_OrgUnit(OrgUnit_id: int, db: Session = Depends(get_pgdb)):
     db_OrgUnit = db.get(OrgUnit, OrgUnit_id)
     if db_OrgUnit is None:
         raise HTTPException(status_code=404, detail="OrgUnit not found")
