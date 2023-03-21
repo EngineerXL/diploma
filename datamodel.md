@@ -27,6 +27,7 @@ class OrgUnit {
 class Sensor{
  -int64_t id
  -int64_t type_id
+ -int64_t ch_id
 }
 
 class SensorType{

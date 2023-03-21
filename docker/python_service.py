@@ -4,8 +4,8 @@ from sqlalchemy.sql import text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import Session
-from datetime import date
-import json
+from datetime import date, datetime
+from io import StringIO
 from fastapi.middleware.cors import CORSMiddleware
 
 from clickhouse_sqlalchemy import Table, make_session, get_declarative_base, types, engines
@@ -56,7 +56,8 @@ class OrgUnit(bases["pg"]):
 class Sensor(bases["pg"]):
     __tablename__ = "Sensors"
     id = Column(BigInteger, primary_key=True, index=True)
-    type = Column(BigInteger)
+    type_id = Column(BigInteger)
+    ch_id = Column(BigInteger)
     date = Column(Date)
 
 
@@ -71,31 +72,8 @@ class SensorType(bases["pg"]):
 bases["pg"].metadata.create_all(bind=alchemy_engines["pg"])
 
 
-class CH_Sensor(bases["ch"]):
-    __tablename__ = "CH_Sensors"
-    id = Column(types.Int64, primary_key=True, index=True)
-    value = Column(types.Float64)
-    date = Column(types.Date)
-
-    __table_args__ = (
-        engines.Memory(),
-    )
-
-
-try:
-    # Emits CREATE TABLE statement
-    r = CH_Sensor.__table__.create()
-except BaseException as ex:
-    # print(ex.args)
-    pass
-
-
 def get_chdb():
-    db = make_session(alchemy_engines["ch"])
-    try:
-        yield db
-    finally:
-        db.close()
+    return alchemy_engines["ch"]
 
 
 def get_pgdb():
@@ -126,31 +104,6 @@ app.add_middleware(
 )
 
 
-def CH_Sensor_to_schema(db_CH_Sensor: CH_Sensor):
-    return {
-        "id": db_CH_Sensor.id,
-        "value": db_CH_Sensor.value,
-        "date": db_CH_Sensor.date,
-    }
-
-
-@ app.post("/CH")
-async def add_SensorType(request: Request, db: Session = Depends(get_chdb)):
-    # params = await request.json()
-    # db_CH_Sensor = SensorType(value=params["value"])
-    db_CH_Sensor = CH_Sensor(value=1, date=date.today())
-    db.add(db_CH_Sensor)
-    db.commit()
-    return SensorType_to_schema(db_CH_Sensor)
-
-
-# @ app.get("/CH/{Sensor_id}")
-# async def get_Sensor(Sensor_id: int, db: Session = Depends(get_pgdb)):
-#     db_Sensor = db.get(Sensor, Sensor_id)
-#     if db_Sensor is None:
-#         raise HTTPException(status_code=404, detail="Sensor not found")
-#     return Sensor_to_schema(db_Sensor)
-
 def OrgTreeNode_to_schema(db_OrgTreeNode: OrgTreeNode):
     return {
         "id": db_OrgTreeNode.id,
@@ -161,7 +114,7 @@ def OrgTreeNode_to_schema(db_OrgTreeNode: OrgTreeNode):
 
 
 @app.get("/OrgTreeNodes/{OrgTreeNode_id}")
-async def get_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_pgdb), db2: Session = Depends(get_chdb)):
+async def get_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_pgdb)):
     db_OrgTreeNode = db.get(OrgTreeNode, OrgTreeNode_id)
     if db_OrgTreeNode is None:
         raise HTTPException(status_code=404, detail="OrgTreeNode not found")
@@ -281,7 +234,7 @@ def inv_edge_id(id: int):
     return ((id - 1) ^ 1) + 1
 
 
-def delete_edge(u: int, v: int, db: Depends(get_pgdb)):
+def delete_edge(u: int, v: int, db: Session = Depends(get_pgdb)):
     db_OrgTreeEdge = db_get_edge(u, v, db)
     if db_OrgTreeEdge is None:
         raise HTTPException(status_code=404, detail="OrgTreeEdge not found")
@@ -308,22 +261,62 @@ async def delete_OrgTreeEdge(request: Request, db: Session = Depends(get_pgdb)):
 def Sensor_to_schema(db_Sensor: Sensor):
     return {
         "id": db_Sensor.id,
-        "type": db_Sensor.type,
+        "type_id": db_Sensor.type_id,
+        "ch_id": db_Sensor.ch_id,
         "date": db_Sensor.date
     }
 
 
-def check_SensorType(SensorType_id: int, db: Session = Depends(get_pgdb)):
-    db_SensorType = db.get(SensorType, SensorType_id)
-    return False if db_SensorType == None else True
+def get_SensorType(SensorType_id: int, db: Session = Depends(get_pgdb)):
+    return db.get(SensorType, SensorType_id)
+
+
+def get_table_name(id: int):
+    return "CH_Sensor_" + str(id)
+
+
+N_ROWS_TO_GEN = 100
+
+
+def arr_to_string(a):
+    out = StringIO()
+    print(a, file=out, end="")
+    res = out.getvalue()
+    out.close()
+    return res[1:len(res) - 1]
+
+
+def create_new_ch_table(id: int, n_params: int, db=Depends(get_chdb)):
+    s, t = "", get_table_name(id)
+    s += "CREATE TABLE IF NOT EXISTS " + t + " ( "
+    s += "t DateTime64(6)"
+    for i in range(n_params):
+        s += ", value_" + str(i) + " Float64"
+    s += ") ENGINE = MergeTree"
+    s += " ORDER BY t"
+    db.execute(s)
+    arr = []
+    a = [0.0 for _ in range(n_params + 1)]
+    for i in range(N_ROWS_TO_GEN):
+        for j in range(n_params):
+            a[j + 1] = (i * n_params + j) / 10.0
+        a[0] = datetime.now().timestamp()
+        arr.append(tuple(a))
+    s = ""
+    s += "INSERT INTO " + t + " VALUES " + arr_to_string(arr)
+    db.execute(s)
 
 
 @ app.post("/Sensors")
-async def add_Sensor(request: Request, db: Session = Depends(get_pgdb)):
+async def add_Sensor(request: Request, db: Session = Depends(get_pgdb), ch=Depends(get_chdb)):
     param_json = await request.json()
-    if not (check_SensorType(param_json["type"], db)):
+    SensorType_id = param_json["type_id"]
+    db_SensorType = get_SensorType(SensorType_id, db)
+    if (db_SensorType == None):
         raise HTTPException(status_code=500, detail="Sensor type not found")
-    db_Sensor = Sensor(type=param_json["type"])
+    cnt_ch_tables = len(ch.execute("SHOW TABLES").fetchall()) + 1
+    create_new_ch_table(cnt_ch_tables, db_SensorType.dim, ch)
+    db_Sensor = Sensor(type_id=SensorType_id, ch_id=cnt_ch_tables)
     db.add(db_Sensor)
     db.commit()
     return Sensor_to_schema(db_Sensor)
@@ -337,21 +330,36 @@ async def get_Sensor(Sensor_id: int, db: Session = Depends(get_pgdb)):
     return Sensor_to_schema(db_Sensor)
 
 
+@ app.get("/Sensors/{Sensor_id}/CH_Data")
+async def get_Sensor(Sensor_id: int, db: Session = Depends(get_pgdb), ch=Depends(get_chdb)):
+    db_Sensor = db.get(Sensor, Sensor_id)
+    if db_Sensor is None:
+        raise HTTPException(status_code=404, detail="Sensor not found")
+    res = ch.execute("SELECT * FROM " +
+                     get_table_name(db_Sensor.ch_id)).fetchall()
+    return res
+
+
 @ app.put("/Sensors/{Sensor_id}")
-async def edit_Sensor(Sensor_id: int, request: Request, db: Session = Depends(get_pgdb)):
+async def edit_Sensor(Sensor_id: int, request: Request, db: Session = Depends(get_pgdb), ch=Depends(get_chdb)):
     db_Sensor = db.get(Sensor, Sensor_id)
     if db_Sensor is None:
         raise HTTPException(status_code=404, detail="Sensor not found")
     param_json = await request.json()
-    if not (check_SensorType(param_json["type"], db)):
+    SensorType_id = param_json["type_id"]
+    db_SensorType = get_SensorType(SensorType_id, db)
+    if (db_SensorType == None):
         raise HTTPException(status_code=500, detail="Sensor type not found")
-    db_Sensor.type = param_json["type"]
+    cnt_ch_tables = len(ch.execute("SHOW TABLES").fetchall()) + 1
+    create_new_ch_table(cnt_ch_tables, db_SensorType.dim, ch)
+    db_Sensor.type_id = SensorType_id
+    db_Sensor.ch_id = cnt_ch_tables
     db.commit()
     return Sensor_to_schema(db_Sensor)
 
 
 @ app.delete("/Sensors/{Sensor_id}")
-async def delete_Sensor(Sensor_id: int, request: Request, db: Session = Depends(get_pgdb)):
+async def delete_Sensor(Sensor_id: int, db: Session = Depends(get_pgdb)):
     db_Sensor = db.get(Sensor, Sensor_id)
     if db_Sensor is None:
         raise HTTPException(status_code=404, detail="Sensor not found")

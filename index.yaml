@@ -180,6 +180,30 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /Sensors/{Sensor_id}/CH_Data:
+    parameters:
+      - name: "Sensor_id"
+        description: "The unique identifier of the sensor"
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/Sensor_id"
+    get:
+      summary: "Read sensor data stored in ClickHouse"
+      responses:
+        200:
+          description: "OK, sensor data"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CH_Data"
+        404:
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /Sensors/{Sensor_id}:
     parameters:
       - name: "Sensor_id"
@@ -318,6 +342,15 @@ paths:
 
 components:
   schemas:
+    CH_Data:
+      description: "ClickHouse data"
+      type: "array"
+      items:
+        type: "array"
+        items:
+          type: "number"
+          format: "double"
+
     Date:
       description: "Date of removal"
       type: "string"
@@ -326,12 +359,12 @@ components:
     OrgTreeNode_id:
       description: "The unique identifier of an organization tree node"
       type: "integer"
-      format: "int64_t"
+      format: "int64"
 
     OrgTreeEdge_id:
       description: "The unique identifier of an organization tree edge"
       type: "integer"
-      format: "int64_t"
+      format: "int64"
 
     OrgTreeEdge:
       type: "object"
@@ -371,14 +404,14 @@ components:
         object_id:
           description: "OrgUnit_id or Sensor_id"
           type: "integer"
-          format: "int64_t"
+          format: "int64"
         date:
           $ref: "#/components/schemas/Date"
 
     OrgUnit_id:
       description: "The unique identifier of an organization unit"
       type: "integer"
-      format: "int64_t"
+      format: "int64"
 
     OrgUnit:
       type: "object"
@@ -403,12 +436,17 @@ components:
     Sensor_id:
       description: "The unique identifier of a sensor"
       type: "integer"
-      format: "int64_t"
+      format: "int64"
 
     SensorType_id:
       description: "The unique identifier ot a sensor type"
       type: "integer"
-      format: "int64_t"
+      format: "int64"
+
+    CH_Sensor_id:
+      description: "The unique identifier of ClickHouse sensor table"
+      type: "integer"
+      format: "int64"
 
     SensorType:
       type: "object"
@@ -422,10 +460,10 @@ components:
           $ref: "#/components/schemas/SensorType_id"
         freq:
           type: "integer"
-          format: "int64_t"
+          format: "int64"
         dim:
           type: "integer"
-          format: "int64_t"
+          format: "int64"
         info:
           type: "string"
 
@@ -434,12 +472,15 @@ components:
       required:
         - "id"
         - "type_id"
+        - "ch_id"
         - "date"
       properties:
         id:
           $ref: "#/components/schemas/Sensor_id"
-        type:
+        type_id:
           $ref: "#/components/schemas/SensorType_id"
+        chid:
+          $ref: "#/components/schemas/CH_Sensor_id"
         date:
           $ref: "#/components/schemas/Date"
 
