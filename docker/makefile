@@ -11,3 +11,5 @@ clean:
 	docker volume ls
 	docker volume rm docker_db-volume
 
+restart: down clean up
+

@@ -4,11 +4,13 @@ from sqlalchemy.sql import text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import Session
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from io import StringIO
 from fastapi.middleware.cors import CORSMiddleware
 
 from clickhouse_sqlalchemy import Table, make_session, get_declarative_base, types, engines
+
+import numpy as np
 
 # Start SQL Alchemy
 alchemy_engines = {
@@ -123,9 +125,9 @@ async def get_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_pgdb)):
 
 def db_get_adj(u: int, db: Session = Depends(get_pgdb)):
     parent = db.execute(text(
-        "SELECT id_v FROM \"OrgTreeEdges\" WHERE id_u = " + str(u) + " AND parent = true")).fetchone()
+        "SELECT id_v FROM \"OrgTreeEdges\" WHERE id_u = " + str(u) + " AND parent = true AND date is null")).fetchone()
     lst_adj = db.execute(text(
-        "SELECT id_v FROM \"OrgTreeEdges\" WHERE id_u = " + str(u) + " AND parent = false")).all()
+        "SELECT id_v FROM \"OrgTreeEdges\" WHERE id_u = " + str(u) + " AND parent = false AND date is null")).all()
     return parent, lst_adj
 
 
@@ -133,9 +135,12 @@ def delete_node(OrgTreeNode_id: int, db: Session = Depends(get_pgdb)):
     db_OrgTreeNode = db.get(OrgTreeNode, OrgTreeNode_id)
     if db_OrgTreeNode is None:
         raise HTTPException(status_code=404, detail="OrgTreeNode not found")
+    if (db_OrgTreeNode.date != None):
+        return OrgTreeNode_to_schema(db_OrgTreeNode)
     u = db_OrgTreeNode.id
     parent, adj = db_get_adj(u, db)
-    delete_edge(u, parent[0], db)
+    if (parent != None):
+        delete_edge(u, parent[0], db)
     db_OrgTreeNode.date = date.today()
     db.commit()
     for v in adj:
@@ -174,7 +179,7 @@ async def add_OrgTreeNode(request: Request, db: Session = Depends(get_pgdb)):
     elif (node_type == "orgunit"):
         if not (check_OrgUnit(obj_id, db)):
             raise HTTPException(
-                status_code=404, detail="Sensor " + str(obj_id) + " not found")
+                status_code=404, detail="Org unit " + str(obj_id) + " not found")
     else:
         raise HTTPException(
             status_code=500, detail="Invalid type")
@@ -186,7 +191,7 @@ async def add_OrgTreeNode(request: Request, db: Session = Depends(get_pgdb)):
 
 def check_OrgTreeNode(OrgTreeNode_id: int, db: Session = Depends(get_pgdb)):
     db_OrgTreeNode = db.get(OrgTreeNode, OrgTreeNode_id)
-    return False if db_OrgTreeNode == None else True
+    return False if db_OrgTreeNode == None or db_OrgTreeNode.date != None else True
 
 
 def OrgTreeEdge_to_schema(db_OrgTreeEdge: OrgTreeEdge):
@@ -209,10 +214,10 @@ async def add_OrgTreeEdge(request: Request, db: Session = Depends(get_pgdb)):
             status_code=500, detail="Can't add self edge")
     if not (check_OrgTreeNode(u, db)):
         raise HTTPException(
-            status_code=404, detail="OrgTreeNode " + str(u) + " not found")
+            status_code=404, detail="OrgTreeNode " + str(u) + " not found or deleted")
     if not (check_OrgTreeNode(v, db)):
         raise HTTPException(
-            status_code=404, detail="OrgTreeNode " + str(v) + " not found")
+            status_code=404, detail="OrgTreeNode " + str(v) + " not found or delete")
     db_OrgTreeEdge = db_get_edge(u, v, db)
     if (db_OrgTreeEdge != None):
         raise HTTPException(
@@ -240,10 +245,11 @@ def delete_edge(u: int, v: int, db: Session = Depends(get_pgdb)):
         raise HTTPException(status_code=404, detail="OrgTreeEdge not found")
     db_OrgTreeEdge_uv = db.get(OrgTreeEdge, db_OrgTreeEdge.id)
     db_OrgTreeEdge_vu = db.get(OrgTreeEdge, inv_edge_id(db_OrgTreeEdge.id))
-    db_OrgTreeEdge_uv.date = date.today()
-    db_OrgTreeEdge_vu.date = date.today()
     if (db_OrgTreeEdge_uv.id_u != db_OrgTreeEdge_vu.id_v or db_OrgTreeEdge_uv.id_v != db_OrgTreeEdge_vu.id_u):
         raise HTTPException(status_code=500, detail="FAIL, incorrect edges!")
+    if (db_OrgTreeEdge_uv.date == None):
+        db_OrgTreeEdge_uv.date = date.today()
+        db_OrgTreeEdge_vu.date = date.today()
     db.commit()
     return OrgTreeEdge_to_schema(db_OrgTreeEdge_uv)
 
@@ -275,7 +281,7 @@ def get_table_name(id: int):
     return "CH_Sensor_" + str(id)
 
 
-N_ROWS_TO_GEN = 100
+N_ROWS_TO_GEN = 10
 
 
 def arr_to_string(a):
@@ -286,7 +292,7 @@ def arr_to_string(a):
     return res[1:len(res) - 1]
 
 
-def create_new_ch_table(id: int, n_params: int, db=Depends(get_chdb)):
+def create_new_ch_table(id: int, freq: int, n_params: int, db=Depends(get_chdb)):
     s, t = "", get_table_name(id)
     s += "CREATE TABLE IF NOT EXISTS " + t + " ( "
     s += "t DateTime64(6)"
@@ -296,11 +302,13 @@ def create_new_ch_table(id: int, n_params: int, db=Depends(get_chdb)):
     s += " ORDER BY t"
     db.execute(s)
     arr = []
+    now = datetime.now()
+    delta = 1.0 / freq
     a = [0.0 for _ in range(n_params + 1)]
-    for i in range(N_ROWS_TO_GEN):
+    for i in range(freq * N_ROWS_TO_GEN):
         for j in range(n_params):
             a[j + 1] = (i * n_params + j) / 10.0
-        a[0] = datetime.now().timestamp()
+        a[0] = (now + timedelta(seconds=i * delta)).timestamp()
         arr.append(tuple(a))
     s = ""
     s += "INSERT INTO " + t + " VALUES " + arr_to_string(arr)
@@ -315,7 +323,8 @@ async def add_Sensor(request: Request, db: Session = Depends(get_pgdb), ch=Depen
     if (db_SensorType == None):
         raise HTTPException(status_code=500, detail="Sensor type not found")
     cnt_ch_tables = len(ch.execute("SHOW TABLES").fetchall()) + 1
-    create_new_ch_table(cnt_ch_tables, db_SensorType.dim, ch)
+    create_new_ch_table(cnt_ch_tables, db_SensorType.freq,
+                        db_SensorType.dim, ch)
     db_Sensor = Sensor(type_id=SensorType_id, ch_id=cnt_ch_tables)
     db.add(db_Sensor)
     db.commit()
@@ -329,15 +338,104 @@ async def get_Sensor(Sensor_id: int, db: Session = Depends(get_pgdb)):
         raise HTTPException(status_code=404, detail="Sensor not found")
     return Sensor_to_schema(db_Sensor)
 
+DT_1S = timedelta(seconds=1)
 
-@ app.get("/Sensors/{Sensor_id}/CH_Data")
-async def get_Sensor(Sensor_id: int, db: Session = Depends(get_pgdb), ch=Depends(get_chdb)):
-    db_Sensor = db.get(Sensor, Sensor_id)
-    if db_Sensor is None:
-        raise HTTPException(status_code=404, detail="Sensor not found")
-    res = ch.execute("SELECT * FROM " +
-                     get_table_name(db_Sensor.ch_id)).fetchall()
+
+def get_sensor_data(id: int, ch=Depends(get_chdb), interval=None):
+    q = "SELECT * FROM " + get_table_name(id)
+    if (interval):
+        l, r = interval[0] - DT_1S, interval[1] + DT_1S
+        q += " WHERE t BETWEEN \'" + str(l) + "\' AND \'" + str(r) + "\'"
+    return ch.execute(q).fetchall()
+
+
+def dfs(OrgTreeNode_id: int, data, db: Session = Depends(get_pgdb), ch=Depends(get_chdb), interval=None):
+    db_OrgTreeNode = db.get(OrgTreeNode, OrgTreeNode_id)
+    _, adj = db_get_adj(OrgTreeNode_id, db)
+    if (db_OrgTreeNode.type == "sensor"):
+        Sensor_id = db_OrgTreeNode.object_id
+        s = "Sensor" + str(Sensor_id)
+        data[s] = get_sensor_data(Sensor_id, ch, interval)
+    for v in adj:
+        dfs(v[0], data, db, ch, interval)
+
+
+def convert_ch_to_np(data):
+    if (not data):
+        raise HTTPException(status_code=500, detail="No data")
+    for y in data.values():
+        if (not y):
+            raise HTTPException(status_code=500, detail="No data")
+    keys_sensors = list(data.keys())
+    sz_sensors = list(len(y) for y in data.values())
+    dims = list(len(y[0]) - 1 for y in data.values())
+    n = sum(len(data[elem]) for elem in data.keys())
+    t = np.empty(n, dtype=np.float64)
+    i, m, n_sens = 0, sum(dims), len(dims)
+    t_sensors = list()
+    for y in data.values():
+        t_cur = np.empty(len(y), dtype=np.float64)
+        j = 0
+        for val in y:
+            t[i] = val[0].timestamp()
+            t_cur[j] = t[i]
+            i += 1
+            j += 1
+        t_sensors.append(t_cur)
+    t = np.unique(t)
+    n = t.shape[0]
+    res = np.empty((n, m), dtype=np.float64)
+    ptr = [0 for _ in range(n_sens)]
+    ind_all_good = -1
+    for i in range(n):
+        good = True
+        for j in range(n_sens):
+            while (ptr[j] < sz_sensors[j] and t_sensors[j][ptr[j]] < t[i]):
+                ptr[j] += 1
+            if (ptr[j] == 0):
+                good = False
+                break
+        if (not good):
+            continue
+        elif (ind_all_good == -1):
+            ind_all_good = i
+        j = 0
+        for ii in range(n_sens):
+            y = data[keys_sensors[ii]]
+            ind = ptr[ii] - 1
+            for jj in range(dims[ii]):
+                res[i][j] = np.float64(y[ind][jj + 1])
+                j += 1
+    res = np.concatenate((np.array([t]).T, res), axis=1)
+    res = np.delete(res, obj=slice(0, ind_all_good), axis=0)
+    # print("-" * 10, " DEBUG BEGIN ", "-" * 10)
+    # for el in res:
+    #     print(el)
+    # for y in data.values():
+    #     print()
+    #     for val in y:
+    #         print(val[0], val[0].timestamp(), val[1:])
+    # print("-" * 10, " DEBUG END ", "-" * 10)
     return res
+
+
+RFC3339_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+
+
+@ app.get("/OrgTreeNodes/{OrgTreeNode_id}/CH_Data")
+async def get_OrgTreeNode(OrgTreeNode_id: int, time_begin, time_end, db: Session = Depends(get_pgdb), ch=Depends(get_chdb)):
+    interval = (datetime.strptime(
+        time_begin, RFC3339_FORMAT), datetime.strptime(time_end, RFC3339_FORMAT))
+    db_OrgTreeNode = db.get(OrgTreeNode, OrgTreeNode_id)
+    if db_OrgTreeNode is None:
+        raise HTTPException(status_code=404,
+                            detail="OrgTreeNode not found")
+    try:
+        data = dict()
+        dfs(OrgTreeNode_id, data, db, ch, interval)
+        return convert_ch_to_np(data).tolist()
+    except BaseException as ex:
+        raise ex
 
 
 @ app.put("/Sensors/{Sensor_id}")
@@ -349,9 +447,11 @@ async def edit_Sensor(Sensor_id: int, request: Request, db: Session = Depends(ge
     SensorType_id = param_json["type_id"]
     db_SensorType = get_SensorType(SensorType_id, db)
     if (db_SensorType == None):
-        raise HTTPException(status_code=500, detail="Sensor type not found")
+        raise HTTPException(status_code=500,
+                            detail="Sensor type not found")
     cnt_ch_tables = len(ch.execute("SHOW TABLES").fetchall()) + 1
-    create_new_ch_table(cnt_ch_tables, db_SensorType.dim, ch)
+    create_new_ch_table(cnt_ch_tables, db_SensorType.freq,
+                        db_SensorType.dim, ch)
     db_Sensor.type_id = SensorType_id
     db_Sensor.ch_id = cnt_ch_tables
     db.commit()

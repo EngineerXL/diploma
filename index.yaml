@@ -132,6 +132,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /OrgTreeNodes/{OrgTreeNode_id}/CH_Data:
+    get:
+      summary: "Read org tree unit time series stored in ClickHouse"
+      parameters:
+        - name: "OrgTreeNode_id"
+          description: "The unique identifier of org tree node"
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/OrgTreeNode_id"
+        - name: "Time interval"
+          description: "Time interval for time series query"
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/TimeInterval"
+      responses:
+        200:
+          description: "OK, org tree node data"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CH_Data"
+        404:
+          description: "Org tree node not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: "No sensors or data in clickhouse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /SensorTypes:
     post:
       summary: "Create new sensor type"
@@ -180,29 +216,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /Sensors/{Sensor_id}/CH_Data:
-    parameters:
-      - name: "Sensor_id"
-        description: "The unique identifier of the sensor"
-        in: path
-        required: true
-        schema:
-          $ref: "#/components/schemas/Sensor_id"
-    get:
-      summary: "Read sensor data stored in ClickHouse"
-      responses:
-        200:
-          description: "OK, sensor data"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CH_Data"
-        404:
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+  # /Sensors/{Sensor_id}/CH_Data:
+  #   parameters:
+  #     - name: "Sensor_id"
+  #       description: "The unique identifier of the sensor"
+  #       in: path
+  #       required: true
+  #       schema:
+  #         $ref: "#/components/schemas/Sensor_id"
+  #   get:
+  #     summary: "Read sensor data stored in ClickHouse"
+  #     responses:
+  #       200:
+  #         description: "OK, sensor data"
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/components/schemas/CH_Data"
+  #       404:
+  #         description: Not found
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/components/schemas/Error"
 
   /Sensors/{Sensor_id}:
     parameters:
@@ -350,6 +386,23 @@ components:
         items:
           type: "number"
           format: "double"
+
+    DateTime:
+      description: "Date ant time of event"
+      type: "string"
+      format: "date-time"
+
+    TimeInterval:
+      description: "Date ant time interval"
+      type: "object"
+      required:
+        - "time_begin"
+        - "time_end"
+      properties:
+        time_begin:
+          $ref: "#/components/schemas/DateTime"
+        time_end:
+          $ref: "#/components/schemas/DateTime"
 
     Date:
       description: "Date of removal"
