@@ -50,7 +50,7 @@ curl -X 'POST' \
   -d '{
   "id": 0,
   "freq": 2,
-  "dim": 1,
+  "dim": 2,
   "info": "t5"
 }'
 

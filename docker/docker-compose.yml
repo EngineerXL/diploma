@@ -5,7 +5,7 @@ services:
     image: postgres
     restart: always
     volumes:
-      - db-volume:/var/lib/postgresql
+      - db-volume-pg:/var/lib/postgresql
     ports:
       - "25500:5432"
     environment:
@@ -19,7 +19,7 @@ services:
     image: yandex/clickhouse-server
     restart: always
     volumes:
-      - db-volume:/var/lib/clickhouse
+      - db-volume-ch:/var/lib/clickhouse
     ports:
       - "25501:9000"
     environment:
@@ -30,8 +30,9 @@ services:
       - arch-network
 
 volumes:
-  db-volume:
-    external: false
+  db-volume-pg:
+  db-volume-ch:
+
 
 networks:
   arch-network:

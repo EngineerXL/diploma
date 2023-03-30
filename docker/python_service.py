@@ -1,16 +1,20 @@
+import os
 from fastapi import Depends, FastAPI, HTTPException, Request
 from sqlalchemy import create_engine, Column, MetaData, BigInteger, Text, Boolean, Date, exc
 from sqlalchemy.sql import text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import Session
+from fastapi.responses import FileResponse
 from datetime import date, datetime, timedelta
 from io import StringIO
 from fastapi.middleware.cors import CORSMiddleware
 
 from clickhouse_sqlalchemy import Table, make_session, get_declarative_base, types, engines
 
+import graphviz
 import numpy as np
+import pandas as pd
 
 # Start SQL Alchemy
 alchemy_engines = {
@@ -281,7 +285,9 @@ def get_table_name(id: int):
     return "CH_Sensor_" + str(id)
 
 
-N_ROWS_TO_GEN = 10
+N_ROWS_TO_GEN = 100
+DT_1S = timedelta(seconds=1)
+RFC3339_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
 
 
 def arr_to_string(a):
@@ -302,7 +308,7 @@ def create_new_ch_table(id: int, freq: int, n_params: int, db=Depends(get_chdb))
     s += " ORDER BY t"
     db.execute(s)
     arr = []
-    now = datetime.now()
+    now = datetime.strptime("2023-02-20T10:30:40.123Z", RFC3339_FORMAT)
     delta = 1.0 / freq
     a = [0.0 for _ in range(n_params + 1)]
     for i in range(freq * N_ROWS_TO_GEN):
@@ -338,8 +344,6 @@ async def get_Sensor(Sensor_id: int, db: Session = Depends(get_pgdb)):
         raise HTTPException(status_code=404, detail="Sensor not found")
     return Sensor_to_schema(db_Sensor)
 
-DT_1S = timedelta(seconds=1)
-
 
 def get_sensor_data(id: int, ch=Depends(get_chdb), interval=None):
     q = "SELECT * FROM " + get_table_name(id)
@@ -349,15 +353,20 @@ def get_sensor_data(id: int, ch=Depends(get_chdb), interval=None):
     return ch.execute(q).fetchall()
 
 
-def dfs(OrgTreeNode_id: int, data, db: Session = Depends(get_pgdb), ch=Depends(get_chdb), interval=None):
+def dfs(OrgTreeNode_id: int, data, cols, db: Session = Depends(get_pgdb), ch=Depends(get_chdb), interval=None):
     db_OrgTreeNode = db.get(OrgTreeNode, OrgTreeNode_id)
     _, adj = db_get_adj(OrgTreeNode_id, db)
     if (db_OrgTreeNode.type == "sensor"):
         Sensor_id = db_OrgTreeNode.object_id
         s = "Sensor" + str(Sensor_id)
         data[s] = get_sensor_data(Sensor_id, ch, interval)
+        db_Sensor = db.get(Sensor, Sensor_id)
+        db_SensorType = db.get(SensorType, db_Sensor.type_id)
+        dim = db_SensorType.dim
+        for i in range(1, dim + 1):
+            cols.append("Sensor " + str(Sensor_id) + ", value " + str(i))
     for v in adj:
-        dfs(v[0], data, db, ch, interval)
+        dfs(v[0], data, cols, db, ch, interval)
 
 
 def convert_ch_to_np(data):
@@ -366,6 +375,7 @@ def convert_ch_to_np(data):
     for y in data.values():
         if (not y):
             raise HTTPException(status_code=500, detail="No data")
+    print("-" * 10, " DEBUG BEGIN ", "-" * 10)
     keys_sensors = list(data.keys())
     sz_sensors = list(len(y) for y in data.values())
     dims = list(len(y[0]) - 1 for y in data.values())
@@ -385,6 +395,7 @@ def convert_ch_to_np(data):
     t = np.unique(t)
     n = t.shape[0]
     res = np.empty((n, m), dtype=np.float64)
+    print("dims = ", res.shape)
     ptr = [0 for _ in range(n_sens)]
     ind_all_good = -1
     for i in range(n):
@@ -408,18 +419,14 @@ def convert_ch_to_np(data):
                 j += 1
     res = np.concatenate((np.array([t]).T, res), axis=1)
     res = np.delete(res, obj=slice(0, ind_all_good), axis=0)
-    # print("-" * 10, " DEBUG BEGIN ", "-" * 10)
     # for el in res:
     #     print(el)
     # for y in data.values():
     #     print()
     #     for val in y:
     #         print(val[0], val[0].timestamp(), val[1:])
-    # print("-" * 10, " DEBUG END ", "-" * 10)
+    print("-" * 10, " DEBUG END ", "-" * 10)
     return res
-
-
-RFC3339_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
 
 
 @ app.get("/OrgTreeNodes/{OrgTreeNode_id}/CH_Data")
@@ -432,8 +439,11 @@ async def get_OrgTreeNode(OrgTreeNode_id: int, time_begin, time_end, db: Session
                             detail="OrgTreeNode not found")
     try:
         data = dict()
-        dfs(OrgTreeNode_id, data, db, ch, interval)
-        return convert_ch_to_np(data).tolist()
+        cols = ["Time, ms"]
+        dfs(OrgTreeNode_id, data, cols, db, ch, interval)
+        df = pd.DataFrame(convert_ch_to_np(data), columns=cols)
+        df.to_csv("rep.csv")
+        return FileResponse("./rep.csv")
     except BaseException as ex:
         raise ex
 
@@ -525,3 +535,37 @@ async def delete_OrgUnit(OrgUnit_id: int, db: Session = Depends(get_pgdb)):
     db_OrgUnit.date = date.today()
     db.commit()
     return OrgUnit_to_schema(db_OrgUnit)
+
+IMG_NAME = "Demo"
+IMG_FORMAT = "svg"
+
+
+@app.get("/OrgTreeNodes")
+async def vizualize(db: Session = Depends(get_pgdb)):
+    dot = graphviz.Digraph(IMG_NAME, comment="Visualization")
+    nodes = db.execute(text("SELECT * FROM \"OrgTreeNodes\"")).all()
+    for elem in nodes:
+        id = elem[0]
+        date = elem[-1]
+        node_style = "solid" if date == None else "dashed"
+        info = str(id)
+        if (elem[1] == "sensor"):
+            db_Sensor = db.get(Sensor, elem[2])
+            info += "\nSensor " + str(db_Sensor.id)
+            db_SensorType = db.get(SensorType, db_Sensor.type_id)
+            info += "\nfreq " + str(db_SensorType.freq) + \
+                ", dim " + str(db_SensorType.dim)
+        elif (elem[1] == "orgunit"):
+            db_OrgUnit = db.get(OrgUnit, elem[2])
+            info += "\nOrg unit " + str(db_OrgUnit.id)
+            info += "\n" + db_OrgUnit.type
+        dot.node(str(id), info, style=node_style)
+    edges = db.execute(text(
+        "SELECT * FROM \"OrgTreeEdges\" WHERE parent = false")).all()
+    for elem in edges:
+        date = elem[-1]
+        edge_style = "solid" if date == None else "dashed"
+        dot.edge(str(elem[1]), str(elem[2]), style=edge_style)
+    dot.format = IMG_FORMAT
+    dot.render(directory="./", view=False)
+    return FileResponse("./" + IMG_NAME + ".gv." + IMG_FORMAT)

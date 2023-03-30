@@ -58,6 +58,16 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   /OrgTreeNodes:
+    get:
+      summary: "Visualize organtisation tree"
+      responses:
+        200:
+          description: "OK"
+          content:
+            image/svg:
+              schema:
+                type: "string"
+                format: "binary"
     post:
       summary: "Create org tree node"
       requestBody:
@@ -152,9 +162,7 @@ paths:
         200:
           description: "OK, org tree node data"
           content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CH_Data"
+            text/csv: {}
         404:
           description: "Org tree node not found"
           content:
@@ -378,15 +386,6 @@ paths:
 
 components:
   schemas:
-    CH_Data:
-      description: "ClickHouse data"
-      type: "array"
-      items:
-        type: "array"
-        items:
-          type: "number"
-          format: "double"
-
     DateTime:
       description: "Date ant time of event"
       type: "string"

@@ -9,7 +9,7 @@ down:
 
 clean:
 	docker volume ls
-	docker volume rm docker_db-volume
+	docker volume rm docker_db-volume-ch
+	docker volume rm docker_db-volume-pg
 
 restart: down clean up
-
