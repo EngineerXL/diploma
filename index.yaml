@@ -7,6 +7,20 @@ servers:
   - url: http://localhost:8080
 
 paths:
+  /Mode:
+    put:
+      summary: "Set mode to single/multi"
+      parameters:
+        - name: "String value"
+          description: "Mode name"
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Mode"
+      responses:
+        200:
+          description: "OK"
+
   /OrgTreeEdges:
     post:
       summary: "Create org tree edge"
@@ -64,7 +78,7 @@ paths:
         200:
           description: "OK"
           content:
-            image/svg:
+            image/png:
               schema:
                 type: "string"
                 format: "binary"
@@ -143,6 +157,30 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   /OrgTreeNodes/{OrgTreeNode_id}/CH_Data:
+    post:
+      summary: "Generate data in CH"
+      parameters:
+        - name: "OrgTreeNode_id"
+          description: "The unique identifier of org tree node"
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/OrgTreeNode_id"
+        - name: "Time interval"
+          description: "Time interval for time series query"
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/TimeInterval"
+      responses:
+        200:
+          description: "OK, org tree node data"
+        404:
+          description: "Org tree node not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     get:
       summary: "Read org tree unit time series stored in ClickHouse"
       parameters:
@@ -223,30 +261,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
-  # /Sensors/{Sensor_id}/CH_Data:
-  #   parameters:
-  #     - name: "Sensor_id"
-  #       description: "The unique identifier of the sensor"
-  #       in: path
-  #       required: true
-  #       schema:
-  #         $ref: "#/components/schemas/Sensor_id"
-  #   get:
-  #     summary: "Read sensor data stored in ClickHouse"
-  #     responses:
-  #       200:
-  #         description: "OK, sensor data"
-  #         content:
-  #           application/json:
-  #             schema:
-  #               $ref: "#/components/schemas/CH_Data"
-  #       404:
-  #         description: Not found
-  #         content:
-  #           application/json:
-  #             schema:
-  #               $ref: "#/components/schemas/Error"
 
   /Sensors/{Sensor_id}:
     parameters:
@@ -386,8 +400,17 @@ paths:
 
 components:
   schemas:
+    Mode:
+      description: "Mode"
+      type: "object"
+      required:
+        - "mode"
+      properties:
+        mode:
+          type: "string"
+
     DateTime:
-      description: "Date ant time of event"
+      description: "Date and time of event"
       type: "string"
       format: "date-time"
 
