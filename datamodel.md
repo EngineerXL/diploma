@@ -5,43 +5,47 @@
 ```plantuml
 @startuml
 class OrgTreeEdge {
-  -int64_t id
-  -int64_t id_u
-  -int64_t id_v
-  -bool parent
+  -bigint id
+  -bigint id_u
+  -bigint id_v
+  -boolean parent
+  -text date
 }
 
 class OrgTreeNode {
-  -int64_t id
-  -string type
-  -int64_t object_id
+  -bigint id
+  -text type
+  -bigint object_id
+  -text date
 }
 
 class OrgUnit {
-  -int64_t id
-  -string name   
-  -string type
-  -string json
+  -bigint id
+  -text name   
+  -text type
+  -text json
+  -text date
 }
 
 class Sensor{
- -int64_t id
- -int64_t type_id
- -int64_t ch_id
+ -bigint id
+ -bigint type_id
+ -bigint ch_id
+ -text date
 }
 
 class SensorType{
-  -int64_t id
-  -int64_t freq
-  -int64_t dim
-  -string info
+  -bigint id
+  -bigint freq
+  -bigint dim
+  -text info
 }
 
-OrgTreeNode -- OrgTreeEdge: "Связывает вершины\nдерева орг. структуры"
+OrgTreeNode --- OrgTreeEdge: "Связывает вершины\nдерева орг. структуры"
 
 OrgTreeNode --- OrgUnit: "Вершина дерева\nописывает единицу\nорг. структуры"
 
-OrgTreeNode -- Sensor: "Вершина дерева\nописывает сенсор"
+OrgTreeNode --- Sensor: "Вершина дерева\nописывает сенсор"
 
 Sensor -- SensorType: "Датчик типа"
 @enduml
