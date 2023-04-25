@@ -7,30 +7,29 @@ skinparam packageStyle rect
 
 actor admin
 
-rectangle "Admin API" {
-  admin -- (Create org tree edge)
-  admin -- (Create org tree node)
-  admin -- (Create new sensor type)
-  admin -- (Redefine\nsensor properties)
-  admin -- (Create new sensor)
-  admin -- (Change sensor type)
-  admin -- (Create new org unit)
-  admin -- (Delete org tree node)
-  admin -- (Delete org tree edge)
-  admin -- (Delete sensor)
-  admin -- (переподвесить)
-  admin -- (Delete org unit)
-
-
-' ?
-  admin -- (publish schema\nto test environment)
-' ?
-  admin -- (publish schema\nto production environment)
-
-'  (checkout) .> (payment) : include
-'  (help) .> (checkout) : extends
-'  (checkout) -> (authorize)
-'  (checkout) -- clerk
+rectangle "Действия с деревом" {
+  admin -up- (Создать ребро в дереве\nорг структуры)
+  admin -up- (Создать вершину в дереве\nорг структуры)
+  admin -up- (Переподвесить вершину)
+  admin -up- (Удалить ребро дерева\nорг структуры)
+  admin -up- (Удалить вершину дерева\nорг структуры)
 }
+
+rectangle "Действия с данными" {
+  admin -up- (Получить набор\nвременных рядов)
+}
+
+rectangle "Действия с датчиками" {
+  admin -down- (Создать новый тип\nдатчика)
+  admin -down- (Создать новый датчик)
+  admin -down- (Переопределить\nсвойства датчика)
+  admin -down- (Удалить датчик)
+}
+
+rectangle "Действия с единицами\nорг структуры" {
+  admin -down- (Создать новую\nорганизационную единицу)
+  admin -down- (Удалить\nорганизационную единицу)
+}
+
 @enduml
 ```
