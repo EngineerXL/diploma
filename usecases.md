@@ -15,7 +15,6 @@ rectangle "Admin API" {
   admin -- (Create new sensor)
   admin -- (Change sensor type)
   admin -- (Create new org unit)
-' каскадное удаление через дату
   admin -- (Delete org tree node)
   admin -- (Delete org tree edge)
   admin -- (Delete sensor)
