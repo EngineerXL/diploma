@@ -20,7 +20,6 @@ import pandas as pd
 alchemy_engines = {
     "pg": create_engine(
         "postgresql+psycopg2://pguser:pguser@localhost:25500/pgdb", echo=True),
-    # "jdbc:ch://HOST.clickhouse.cloud:8443/?user=default&password=PASSWORD&ssl=true&custom_http_params=async_insert=1,wait_for_async_insert=0"
     "ch": create_engine("clickhouse+native://chuser:chuser@localhost:25501/chdb", echo=True)
 }
 
